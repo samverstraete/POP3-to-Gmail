@@ -1,8 +1,7 @@
 const { existsSync, readFileSync, writeFileSync, mkdirSync } = require("fs");
 const path = require("path");
 
-const DEFAULT_DIR = path.resolve(process.env.PRIVATE_DIR || path.join(__dirname, "private"));
-const DEFAULT_FILE = process.env.STATS_FILE || path.join(DEFAULT_DIR, "stats.json");
+const DEFAULT_FILE = process.env.STATS_FILE || path.join(__dirname, "stats.json");
 
 function ensureDir(dir) {
   try {

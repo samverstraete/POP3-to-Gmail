@@ -6,7 +6,7 @@
   "author": "Sam Verstraete",
   "scripts": {
     "start": "node pop3_to_gmail.js private/config.yaml",
-    "debug": "node --experimental-specifier-resolution=node --inspect-brk . config.yaml"
+    "debug": "node --experimental-specifier-resolution=node pop3_to_gmail.js private/config.yaml"
   },
   "private": true,
   "type": "commonjs",

@@ -99,7 +99,7 @@ async function getOauthClient(config) {
 	try {
 		const tokens = oauth2Client.credentials || {};
 		writeFileSync(tokenFile, JSON.stringify(tokens, null, 2));
-		logger.info("Saved token to %s", tokenFile);
+		logger.info(`Saved token to ${tokenFile}`);
 	} catch (e) {
 		logger.warn("Failed to save token: " + (e.message || e));
 	}
