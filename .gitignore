@@ -1,0 +1,7 @@
+node_modules/
+logs/
+private/
+
+package-lock.json
+token.json
+credentials.json

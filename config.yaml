@@ -1,0 +1,23 @@
+gmail:
+  client_secrets_file: "credentials.json"
+  token_file: "token.json"
+
+check_interval_minutes: 60
+log_dir: "./logs"
+
+accounts:
+  - name: "support@example.com"
+    server: "pop.example.com"
+    port: 995
+    tls: false
+    username: "support@example.com"
+    password: "pop-password"
+    label: "import/support"
+
+  - name: "orders@example.net"
+    server: "pop.example.net"
+    port: 110
+    tls: true
+    username: "orders@example.net"
+    password: "orders-password"
+    label: "import/orders"

@@ -1,0 +1,13 @@
+services:
+  pop3_to_gmail:
+    # Build the image using the Dockerfile in the current directory
+    build: .
+    # Name the container for easier reference (optional)
+    container_name: pop3_to_gmail
+    # Map the application port if it was a web server (not needed for this console app)
+    ports:
+      - "3000:3000"
+    # Mount the local config.yaml file to the container for easy updates during development (optional)
+    volumes:
+      - ./config.yaml:/usr/src/app/config.yaml
+      - ./credentials.json:/usr/src/app/credentials.json
