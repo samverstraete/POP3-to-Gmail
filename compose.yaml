@@ -8,6 +8,7 @@ services:
     ports:
       - "3000:3000"
     # Mount a host directory for persistent data (stats.json) under the container WORKDIR
+    # Mount a host directory for persistent data (stats.json) under the container WORKDIR
     volumes:
       - ./data:/usr/src/app/data:rw
     environment:
