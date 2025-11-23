@@ -11,8 +11,8 @@ RUN npm install
 # Copy app
 COPY . .
 
-# Create log directory and a non-root user
-RUN mkdir -p /var/log/pop3_to_gmail && chown -R node:node /var/log/pop3_to_gmail
+# Create log directory and data directory and make them writable by the `node` user
+RUN mkdir -p /var/log/pop3_to_gmail /usr/src/app/data && chown -R node:node /var/log/pop3_to_gmail /usr/src/app/data
 
 USER node
 ENV LOG_DIR=/var/log/pop3_to_gmail
