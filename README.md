@@ -43,13 +43,13 @@ gmail:
 check_interval_minutes: 5
 
 accounts:
-	- name: personal-pop3
-		server: pop.example.com
-		port: 995
-		username: user@example.com
-		password: secret
-		tls: true
-		label: "POP3 account"
+  - name: personal-pop3
+    server: pop.example.com
+    port: 995
+    username: user@example.com
+    password: secret
+    tls: true
+    label: "POP3 account"
 ```
 
 ## Status page
