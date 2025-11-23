@@ -37,8 +37,8 @@ Example `config.yaml` (minimal)
 
 ```yaml
 gmail:
-	client_secrets_file: credentials.json
-	token_file: token.json
+  client_secrets_file: credentials.json
+  token_file: token.json
 
 check_interval_minutes: 5
 
