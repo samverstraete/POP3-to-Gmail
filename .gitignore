@@ -1,8 +1,6 @@
 node_modules/
 logs/
-private/
-
+data/*
+!data/*example.*
 package-lock.json
 token.json
-credentials.json
-stats.json

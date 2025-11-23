@@ -18,4 +18,4 @@ USER node
 ENV LOG_DIR=/var/log/pop3_to_gmail
 
 # Default command — expects config.yaml and credentials.json present in workdir or mounted
-CMD ["node", "pop3_to_gmail.js", "config.yaml"]
+CMD ["node", "pop3_to_gmail.js", "./data/config.yaml"]

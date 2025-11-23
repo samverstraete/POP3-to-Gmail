@@ -7,20 +7,10 @@ services:
     # Map the application port
     ports:
       - "3000:3000"
-    # Mount a host directory for persistent data (stats.json) under the container WORKDIR
-    # Mount a host directory for persistent data (stats.json) under the container WORKDIR
+    # Mount a host directory for persistent data under the container WORKDIR
     volumes:
-      - ./data:/usr/src/app/data:rw
+      - ./data/pop3_to_gmail:/usr/src/app/data:rw
     environment:
       - STATS_FILE=/usr/src/app/data/stats.json
     entrypoint: ["/bin/sh","-c","cp /run/secrets/config_yaml /usr/src/app/config.yaml 2>/dev/null || true; cp /run/secrets/gmail_credentials /usr/src/app/credentials.json 2>/dev/null || true; exec node /usr/src/app/pop3_to_gmail.js /usr/src/app/config.yaml"]
-    secrets:
-      - source: gmail_credentials
-        target: gmail_credentials
-      - source: config_yaml
-        target: config_yaml
-secrets:
-  gmail_credentials:
-    file: ./credentials.json
-  config_yaml:
-    file: ./config.yaml
+    restart: unless-stopped
