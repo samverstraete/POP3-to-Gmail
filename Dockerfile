@@ -17,5 +17,5 @@ RUN mkdir -p /var/log/pop3_to_gmail /usr/src/app/data && chown -R node:node /var
 USER node
 ENV LOG_DIR=/var/log/pop3_to_gmail
 
-# Default command — expects config.yaml and credentials.json present in workdir or mounted
+# Default command — expects config.yaml and credentials.json present in datadir or mounted
 CMD ["node", "pop3_to_gmail.js", "./data/config.yaml"]

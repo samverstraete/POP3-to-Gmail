@@ -233,7 +233,7 @@ async function processAccount(gmail, account) {
 // --- Main loop & graceful shutdown ---
 async function main() {
 	if (process.argv.length < 3) {
-		console.error("Usage: node pop3_to_gmail.js config.yaml");
+		console.error("Usage: node pop3_to_gmail.js data/config.yaml");
 		process.exit(1);
 	}
 	const cfgPath = process.argv[2];
