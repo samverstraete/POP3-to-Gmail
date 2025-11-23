@@ -23,7 +23,7 @@ npm install
 3. Create `config.yaml` (example fields below) and run:
 
 ```pwsh
-node .\pop3_to_gmail.js .\config.yaml
+node .\pop3_to_gmail.js .\data\config.yaml
 ```
 
 ## Configuration

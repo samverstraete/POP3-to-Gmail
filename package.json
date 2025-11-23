@@ -5,8 +5,8 @@
   "main": "pop3_to_gmail.js",
   "author": "Sam Verstraete",
   "scripts": {
-    "start": "node pop3_to_gmail.js private/config.yaml",
-    "debug": "node --experimental-specifier-resolution=node pop3_to_gmail.js private/config.yaml"
+    "start": "node pop3_to_gmail.js data/config.yaml",
+    "debug": "node --experimental-specifier-resolution=node pop3_to_gmail.js data/config.yaml"
   },
   "private": true,
   "type": "commonjs",
