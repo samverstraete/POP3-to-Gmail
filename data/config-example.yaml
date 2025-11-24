@@ -1,6 +1,6 @@
 gmail:
-  client_secrets_file: "credentials.json"
-  token_file: "token.json"
+  client_secrets_file: "./data/credentials.json"
+  token_file: "./data/token.json"
 
 check_interval_minutes: 60
 log_dir: "./logs"

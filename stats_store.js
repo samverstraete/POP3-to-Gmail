@@ -1,5 +1,5 @@
-const { existsSync, readFileSync, writeFileSync, mkdirSync } = require("fs");
-const path = require("path");
+const { existsSync, readFileSync, writeFileSync, mkdirSync } = require("node:fs");
+const path = require("node:path");
 
 const DEFAULT_FILE = process.env.STATS_FILE || path.join(__dirname, "stats.json");
 

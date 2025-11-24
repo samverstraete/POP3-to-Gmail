@@ -1,35 +1,21 @@
 #!/usr/bin/env node
-/**
- * pop3_to_gmail.js
- * POP3 -> Gmail importer (Node.js)
- *
- * Features:
- *  - multiple POP3 accounts (config.yaml)
- *  - imports messages using Gmail API users.messages.import
- *  - attaches account-specific label + INBOX, leaves unread
- *  - deletes POP3 message only after successful import
- *  - OAuth2 web flow for headful setup (local callback)
- *  - rotating logs using winston-daily-rotate-file
- *  - graceful shutdown (SIGINT/SIGTERM)
- *
- * Install:
- *   npm ci
- *
- * Run:
- *   node pop3_to_gmail.js config.yaml
- */
+
+/*
+* MAIN FILE FOR POP3 TO GMAIL IMPORTER
+* see README.md for usage information
+*/
 "use strict";
 
-const { existsSync, mkdirSync, readFileSync, writeFileSync } = require("fs");
+const { existsSync, mkdirSync, readFileSync, writeFileSync } = require("node:fs");
 const path = require("node:path");
+const http = require("node:http");
+const { URL } = require("node:url");
+
 const { parse } = require("yaml");
 const { google } = require("googleapis");
 const { popConnect, popStat, popRetr, popDele, popQuit } = require("./pop3_functions.js");
 const { getOauthClient, getOrCreateLabel, importMessage, setGfLogger, getAuthWaiter, deleteAuthWaiter, getAuthorizeUrl } = require("./gmail_functions.js");
 const stats = require("./stats_store.js");
-
-const http = require("http");
-const url = require("url");
 const destroyer = require("server-destroy");
 let httpServer = null;
 
@@ -81,6 +67,8 @@ function wait(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// --- HTTP server stuff ---
+
 // Start a simple status HTTP server (idempotent). Exposes:
 // - GET /oauthcallback?code=...&state=... -> handles OAuth callbacks if registered
 // - GET /status -> simple HTML table
@@ -89,7 +77,8 @@ function startStatusServer(statsStore, port) {
 	const p = Number(port || process.env.STATUS_PORT || 3000);
 	httpServer = http.createServer((req, res) => {
 		try {
-			const reqUrl = new url.URL(req.url, `http://localhost:${p}/oathcallback`);
+			const reqUrl = new URL(req.url);
+			const reqHost = req.headers.host;
 			// OAuth callback handling: if someone registered a waiter for this pathname,
 			// let the waiter handle it (it contains oauth2Client + resolve/reject).
 			const waiter = getAuthWaiter(reqUrl.pathname);
@@ -103,7 +92,10 @@ function startStatusServer(statsStore, port) {
 					try { waiter.reject(new Error('OAuth error: ' + error)); } catch(e){}
 					return;
 				}
-				res.end('Authentication successful! You can close this tab and return to the console.');
+				res.end(`<!DOCTYPE html><html>
+					<head><meta http-equiv="refresh" content="5; url=/status"></head>
+					<body>Authentication successful! Redirecting to the <a href="/status">status page</a>.</body>
+					</html>`);
 				deleteAuthWaiter(reqUrl.pathname);
 				// exchange code for token and resolve the original promise
 				waiter.oauth2Client.getToken(code).then(({tokens}) => {
@@ -118,15 +110,27 @@ function startStatusServer(statsStore, port) {
 				if (statsStore && typeof statsStore.getAllStats === 'function') {
 					const data = statsStore.getAllStats();
 					res.setHeader('Content-Type', 'text/html; charset=utf-8');
-					let html = `<html><head><title>POP3->Gmail status</title></head><body><h1>Status</h1><p>Updated: ${new Date(data.updatedAt||Date.now()).toString()}</p>`;
-					if (getAuthorizeUrl()) html += `<p><strong>Waiting for OAuth authorization:</strong> <a href="${getAuthorizeUrl()}" target="_blank">${getAuthorizeUrl()}</a></p>`;
-					html += '<table border="1" cellpadding="4" cellspacing="0"><tr><th>Account</th><th>Last Sync</th><th>Day</th><th>Week</th><th>Month</th><th>Year</th><th>Total</th></tr>';
+					let html = `<html>
+						<head>
+							<title>POP3->Gmail status</title>
+							<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+						</head>
+						<body><div class="container">
+							<h2>Status</h2>
+							<p>Updated: ${new Date(data.updatedAt || Date.now()).toString()}</p>`;
+					if (getAuthorizeUrl()) {
+						const newurl = modifyOAuthUrl(req, getAuthorizeUrl());
+						html += `<div class="alert alert-primary" role="alert"><strong>Waiting for OAuth authorization:</strong> <a href="${newurl}">Click here</a></div>`;
+					}
+					html += `<h2>Statistics</h2>
+						<table class="table">
+							<tr><th>Account</th><th>Last Sync</th><th>Day</th><th>Week</th><th>Month</th><th>Year</th><th>Total</th></tr>`;
 					const accounts = data.accounts || {};
 					for (const [k,v] of Object.entries(accounts)) {
-						const ls = v.last_sync ? `${new Date(v.last_sync.time).toLocaleString()} (${v.last_sync.status})` + (v.last_sync.message?` - ${v.last_sync.message}`:'') : 'n/a';
+						const ls = v.last_sync ? `${new Date(v.last_sync.time).toString()} (${v.last_sync.status})` + (v.last_sync.message?` - ${v.last_sync.message}`:'') : 'n/a';
 						html += `<tr><td>${k}</td><td>${ls}</td><td>${v.counts.day}</td><td>${v.counts.week}</td><td>${v.counts.month}</td><td>${v.counts.year}</td><td>${v.counts.total}</td></tr>`;
 					}
-					html += '</table></body></html>';
+					html += '</table></div></body></html>';
 					res.end(html);
 					return;
 				} else {
@@ -136,7 +140,10 @@ function startStatusServer(statsStore, port) {
 				}
 			}
 			res.statusCode = 404;
-			res.end('Not found');
+			res.end(`<!DOCTYPE html><html>
+					<head><meta http-equiv="refresh" content="5; url=/status"></head>
+					<body>Not found! Redirecting to the <a href="/status">status page</a>.</body>
+					</html>`);
 		} catch (e) {
 			res.statusCode = 500;
 			res.end('Server error');
@@ -146,6 +153,46 @@ function startStatusServer(statsStore, port) {
 	});
 	destroyer(httpServer);
 	return httpServer;
+}
+
+/**
+ * Modifies the redirect_uri parameter in a given OAuth URL to reflect the host of the current incoming request.
+ * @param {http.IncomingMessage} req The Node.js request object containing headers.
+ * @param {string} originalUrl The OAuth authorization URL string.
+ * @returns {string} The modified OAuth URL string.
+ */
+function modifyOAuthUrl(req, originalUrl) {
+    // Construct the actual base address of the server
+    const currentBaseAddress = `${req.protocol}://${req.headers.host}`;
+    // Parse the original OAuth URL
+    const oauthUrl = new URL(originalUrl);
+
+    // Access the existing redirect_uri parameter value
+    const params = oauthUrl.searchParams;
+    const existingRedirectUriString = params.get('redirect_uri');
+
+    if (!existingRedirectUriString) {
+        console.warn("Redirect_uri parameter not found in the OAuth URL.");
+        return originalUrl;
+    }
+
+    // Parse the existing redirect_uri to safely modify it
+    try {
+		// Create a URL object from the existing redirect_uri
+        const existingRedirectUri = new URL(existingRedirectUriString);
+        
+        // Replace the host and port with the actual server host, the pathname is kept the same
+        const newRedirectUri = new URL(existingRedirectUri.pathname, currentBaseAddress);
+        
+        // Update the OAuth URL's search parameter with the new value
+        params.set('redirect_uri', newRedirectUri.toString());
+        
+        // Return the final modified URL string
+        return oauthUrl.toString();
+    } catch (error) {
+        console.error("Error parsing or modifying the existing redirect_uri:", error);
+        return originalUrl; // Return original URL on error
+    }
 }
 
 // --- Main processing for a single account ---

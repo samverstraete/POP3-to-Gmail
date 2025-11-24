@@ -1,14 +1,12 @@
-const { existsSync, readFileSync, writeFileSync } = require("fs");
+const { existsSync, readFileSync, writeFileSync } = require("node:fs");
 const { google } = require("googleapis");
-const url = require("url");
+const url = require("node:url");
 let logger = console; // default logger
 let authorizeUrl = null;
 const authWaiters = new Map(); // pathname -> { oauth2Client, resolve, reject }
 
-/**
- * Start a temporary HTTP server to accept the oauth callback.
- * expects redirectUri like "http://localhost:3000/oauth2callback"
- */
+// Start the authentication and register a waiter for the OAuth2 callback
+// expects redirectUri like "http://host:3000/oauth2callback"
 async function authenticate(oauth2Client, scopes, redirectUri) {
 	// If a persistent status server is running on the redirect port, register
 	// a one-time waiter so the server can handle the callback while continuing

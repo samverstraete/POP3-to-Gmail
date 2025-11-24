@@ -3,4 +3,3 @@ logs/
 data/*
 !data/*example.*
 package-lock.json
-token.json

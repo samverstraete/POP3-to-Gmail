@@ -53,7 +53,7 @@ accounts:
 ```
 
 ## Status page
-`http://localhost:<port>/status` — shows a small table per account with last sync and counts for the last day/week/month/year and total imports.
+`http://host:<port>/status` — shows a small table per account with last sync and counts for the last day/week/month/year and total imports.
 
 By default the server binds to the OAuth redirect port (if present in the credentials) so that the OAuth callback and status UI share a single listener. 
 
