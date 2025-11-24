@@ -9,13 +9,15 @@
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require("node:fs");
 const path = require("node:path");
 const http = require("node:http");
-const url = require("url");
+const url = require("node:url");
 
 const { parse } = require("yaml");
 const { google } = require("googleapis");
 const { popConnect, popStat, popRetr, popDele, popQuit } = require("./pop3_functions.js");
 const { getOauthClient, getOrCreateLabel, importMessage, setGfLogger, getAuthWaiter, deleteAuthWaiter, getAuthorizeUrl } = require("./gmail_functions.js");
-const stats = require("./stats_store.js");
+// stats store will be created after loading config so we can pass a path from config
+let stats = null;
+const { StatsStore } = require("./stats_store.js");
 const destroyer = require("server-destroy");
 let httpServer = null;
 
@@ -77,7 +79,7 @@ function startStatusServer(statsStore, port) {
 	const p = Number(port || process.env.STATUS_PORT || 3000);
 	httpServer = http.createServer((req, res) => {
 		try {
-			const reqUrl = new url.URL(req.url);
+			const reqUrl = new url.URL(req.url, `http://localhost:${p}`);
 			// OAuth callback handling: if someone registered a waiter for this pathname,
 			// let the waiter handle it (it contains oauth2Client + resolve/reject).
 			const waiter = getAuthWaiter(reqUrl.pathname);
@@ -126,7 +128,7 @@ function startStatusServer(statsStore, port) {
 							<tr><th>Account</th><th>Last Sync</th><th>Day</th><th>Week</th><th>Month</th><th>Year</th><th>Total</th></tr>`;
 					const accounts = data.accounts || {};
 					for (const [k,v] of Object.entries(accounts)) {
-						const ls = v.last_sync ? `${new Date(v.last_sync.time).toString()} (${v.last_sync.status})` + (v.last_sync.message?` - ${v.last_sync.message}`:'') : 'n/a';
+						const ls = v.last_sync ? `${new Date(v.last_sync.time).toString()} | <span class="badge bg-info text-dark">${v.last_sync.status}</span>` + (v.last_sync.message?` - ${v.last_sync.message}`:'') : 'n/a';
 						html += `<tr><td>${k}</td><td>${ls}</td><td>${v.counts.day}</td><td>${v.counts.week}</td><td>${v.counts.month}</td><td>${v.counts.year}</td><td>${v.counts.total}</td></tr>`;
 					}
 					html += '</table></div></body></html>';
@@ -162,7 +164,7 @@ function startStatusServer(statsStore, port) {
  */
 function modifyOAuthUrl(req, originalUrl) {
     // Construct the actual base address of the server
-    const currentBaseAddress = `${req.protocol}://${req.headers.host}`;
+    const currentBaseAddress = `http://${req.headers.host}`;
     // Parse the original OAuth URL
     const oauthUrl = new url.URL(originalUrl);
 
@@ -284,6 +286,10 @@ async function main() {
 	}
 	const cfgPath = process.argv[2];
 	const cfg = loadConfig(cfgPath);
+	// create the stats store based on config (cfg.stats_file) or environment variable
+	const statsFile = cfg.stats_file || process.env.STATS_FILE;
+	stats = new StatsStore(statsFile);
+	logger.info(`Stats file: ${stats.filePath || statsFile || 'default'}`);
 	const intervalMinutes = Math.max(1, Number(cfg.check_interval_minutes || 5));
 	const logDir = cfg.log_dir || DEFAULT_LOG_DIR;
 

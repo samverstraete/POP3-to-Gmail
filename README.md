@@ -31,6 +31,7 @@ node .\pop3_to_gmail.js .\data\config.yaml
 - `gmail.token_file` — path where OAuth tokens are persisted (defaults to `token.json`).
 - `check_interval_minutes` — how often to poll accounts (default: 5).
 - `status_port` — optional port for the built-in status page; if not set the app will attempt to use the OAuth redirect port from the credentials so OAuth and status share the same listener.
+- `stats_file` — path where persistent stats are stored (defaults to `./data/stats.json`). This can be set in `config.yaml` or via the `STATS_FILE` environment variable.
 - `accounts` — array of POP3 account blocks; each account should include `name`, `server`, `port`, `username`, `password`, and optional flags like `tls`, `ssl`, `label`.
 
 Example `config.yaml` (minimal)
@@ -57,7 +58,7 @@ accounts:
 
 By default the server binds to the OAuth redirect port (if present in the credentials) so that the OAuth callback and status UI share a single listener. 
 
-Persistent stats are stored under `stats.json` by default. The `stats_store.js` module records per-account import timestamps and last sync status. The store prunes timestamps older than ~400 days to keep the file reasonably small.
+Persistent stats are stored in a configurable file (see `stats_file` in `config.yaml`, or the `STATS_FILE` environment variable). The `stats_store.js` module records per-account import timestamps and last sync status. The store prunes timestamps older than ~400 days to keep the file reasonably small.
 
 ## Development notes
 Main files:

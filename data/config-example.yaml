@@ -4,6 +4,7 @@ gmail:
 
 check_interval_minutes: 60
 log_dir: "./logs"
+stats_file: "./data/stats.json"
 
 accounts:
   - name: "support@example.com"

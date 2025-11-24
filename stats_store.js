@@ -102,4 +102,4 @@ class StatsStore {
   }
 }
 
-module.exports = new StatsStore();
+module.exports = { StatsStore };

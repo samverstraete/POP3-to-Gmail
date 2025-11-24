@@ -10,7 +10,5 @@ services:
     # Mount a host directory for persistent data under the container WORKDIR
     volumes:
       - /data/pop3_to_gmail:/usr/src/app/data:rw
-    environment:
-      - STATS_FILE=/usr/src/app/data/stats.json
     entrypoint: ["/bin/sh","-c","exec node /usr/src/app/pop3_to_gmail.js /usr/src/app/data/config.yaml"]
     restart: unless-stopped
