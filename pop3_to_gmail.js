@@ -9,7 +9,7 @@
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require("node:fs");
 const path = require("node:path");
 const http = require("node:http");
-const { URL } = require("node:url");
+const url = require("url");
 
 const { parse } = require("yaml");
 const { google } = require("googleapis");
@@ -77,8 +77,7 @@ function startStatusServer(statsStore, port) {
 	const p = Number(port || process.env.STATUS_PORT || 3000);
 	httpServer = http.createServer((req, res) => {
 		try {
-			const reqUrl = new URL(req.url);
-			const reqHost = req.headers.host;
+			const reqUrl = new url.URL(req.url);
 			// OAuth callback handling: if someone registered a waiter for this pathname,
 			// let the waiter handle it (it contains oauth2Client + resolve/reject).
 			const waiter = getAuthWaiter(reqUrl.pathname);
@@ -165,7 +164,7 @@ function modifyOAuthUrl(req, originalUrl) {
     // Construct the actual base address of the server
     const currentBaseAddress = `${req.protocol}://${req.headers.host}`;
     // Parse the original OAuth URL
-    const oauthUrl = new URL(originalUrl);
+    const oauthUrl = new url.URL(originalUrl);
 
     // Access the existing redirect_uri parameter value
     const params = oauthUrl.searchParams;
@@ -179,10 +178,10 @@ function modifyOAuthUrl(req, originalUrl) {
     // Parse the existing redirect_uri to safely modify it
     try {
 		// Create a URL object from the existing redirect_uri
-        const existingRedirectUri = new URL(existingRedirectUriString);
+        const existingRedirectUri = new url.URL(existingRedirectUriString);
         
         // Replace the host and port with the actual server host, the pathname is kept the same
-        const newRedirectUri = new URL(existingRedirectUri.pathname, currentBaseAddress);
+        const newRedirectUri = new url.URL(existingRedirectUri.pathname, currentBaseAddress);
         
         // Update the OAuth URL's search parameter with the new value
         params.set('redirect_uri', newRedirectUri.toString());
@@ -308,7 +307,7 @@ async function main() {
 				const o = raw.installed || raw.web;
 				if (o && Array.isArray(o.redirect_uris) && o.redirect_uris.length > 0) {
 					try {
-						const ru = new URL(o.redirect_uris[0]);
+						const ru = new url.URL(o.redirect_uris[0]);
 						redirectPort = ru.port ? Number(ru.port) : (ru.protocol === 'http:' ? 80 : 443);
 					} catch (e) {
 						// ignore
