@@ -12,9 +12,8 @@ const http = require("node:http");
 const url = require("node:url");
 
 const { parse } = require("yaml");
-const { google } = require("googleapis");
 const { popConnect, popStat, popRetr, popDele, popQuit } = require("./pop3_functions.js");
-const { getOauthClient, getOrCreateLabel, importMessage, setGfLogger, getAuthWaiter, deleteAuthWaiter, getAuthorizeUrl } = require("./gmail_functions.js");
+const { getOauthClient, getOrCreateLabel, importMessage, setGfLogger, getAuthWaiter, deleteAuthWaiter, getAuthorizeUrl, finishAuthWaiter } = require("./gmail_functions.js");
 // stats store will be created after loading config so we can pass a path from config
 let stats = null;
 const { StatsStore } = require("./stats_store.js");
@@ -23,6 +22,7 @@ let httpServer = null;
 
 const { createLogger, format, transports } = require("winston");
 const DailyRotateFile = require("winston-daily-rotate-file");
+const { log } = require("node:console");
 
 const DEFAULT_LOG_DIR = path.normalize(process.env.LOG_DIR || "./logs");
 if (!existsSync(DEFAULT_LOG_DIR))
@@ -51,6 +51,7 @@ const logger = createLogger({
 });
 
 // --- Utility & config ---
+
 function loadConfig(fp) {
 	const txt = readFileSync(fp, "utf8");
 	const cfg = parse(txt);
@@ -86,25 +87,20 @@ function startStatusServer(statsStore, port) {
 			if (waiter) {
 				const code = reqUrl.searchParams.get('code');
 				const error = reqUrl.searchParams.get('error');
+				deleteAuthWaiter(reqUrl.pathname);
 				if (error) {
 					res.statusCode = 400;
 					res.end('Authentication failed: ' + error);
-					deleteAuthWaiter(reqUrl.pathname);
 					try { waiter.reject(new Error('OAuth error: ' + error)); } catch(e){}
+					logger.warn(`OAuth error on callback: ${error}`);
 					return;
 				}
 				res.end(`<!DOCTYPE html><html>
 					<head><meta http-equiv="refresh" content="5; url=/status"></head>
 					<body>Authentication successful! Redirecting to the <a href="/status">status page</a>.</body>
 					</html>`);
-				deleteAuthWaiter(reqUrl.pathname);
-				// exchange code for token and resolve the original promise
-				waiter.oauth2Client.getToken(code).then(({tokens}) => {
-					waiter.oauth2Client.setCredentials(tokens);
-					try { waiter.resolve(waiter.oauth2Client); } catch(e){}
-				}).catch(err => {
-					try { waiter.reject(err); } catch(e){}
-				});
+				finishAuthWaiter(waiter, code);
+				logger.info('OAuth authentication successful via callback');
 				return;
 			}
 			else if (reqUrl.pathname === '/status') {
@@ -119,8 +115,8 @@ function startStatusServer(statsStore, port) {
 						<body><div class="container">
 							<h2>Status</h2>
 							<p>Updated: ${new Date(data.updatedAt || Date.now()).toString()}</p>`;
-					if (getAuthorizeUrl()) {
-						const newurl = modifyOAuthUrl(req, getAuthorizeUrl());
+					const newurl = getAuthorizeUrl(`http://${req.headers.host}/oauthcallback`);
+					if (newurl) {
 						html += `<div class="alert alert-primary" role="alert"><strong>Waiting for OAuth authorization:</strong> <a href="${newurl}">Click here</a></div>`;
 					}
 					html += `<h2>Statistics</h2>
@@ -137,6 +133,7 @@ function startStatusServer(statsStore, port) {
 				} else {
 					res.statusCode = 500;
 					res.end('Stats store not available');
+					logger.error('Status server: stats store not available');
 					return;
 				}
 			}
@@ -145,9 +142,11 @@ function startStatusServer(statsStore, port) {
 					<head><meta http-equiv="refresh" content="5; url=/status"></head>
 					<body>Not found! Redirecting to the <a href="/status">status page</a>.</body>
 					</html>`);
+			logger.warn(`Status server: unknown request for ${req.url}`);
 		} catch (e) {
 			res.statusCode = 500;
 			res.end('Server error');
+			logger.error(`Status server error: ${e.message || e}`);
 		}
 	}).listen(p, () => {
 		logger.info(`Status server listening on http://localhost:${p}/status`);
@@ -156,48 +155,8 @@ function startStatusServer(statsStore, port) {
 	return httpServer;
 }
 
-/**
- * Modifies the redirect_uri parameter in a given OAuth URL to reflect the host of the current incoming request.
- * @param {http.IncomingMessage} req The Node.js request object containing headers.
- * @param {string} originalUrl The OAuth authorization URL string.
- * @returns {string} The modified OAuth URL string.
- */
-function modifyOAuthUrl(req, originalUrl) {
-    // Construct the actual base address of the server
-    const currentBaseAddress = `http://${req.headers.host}`;
-    // Parse the original OAuth URL
-    const oauthUrl = new url.URL(originalUrl);
-
-    // Access the existing redirect_uri parameter value
-    const params = oauthUrl.searchParams;
-    const existingRedirectUriString = params.get('redirect_uri');
-
-    if (!existingRedirectUriString) {
-        console.warn("Redirect_uri parameter not found in the OAuth URL.");
-        return originalUrl;
-    }
-
-    // Parse the existing redirect_uri to safely modify it
-    try {
-		// Create a URL object from the existing redirect_uri
-        const existingRedirectUri = new url.URL(existingRedirectUriString);
-        
-        // Replace the host and port with the actual server host, the pathname is kept the same
-        const newRedirectUri = new url.URL(existingRedirectUri.pathname, currentBaseAddress);
-        
-        // Update the OAuth URL's search parameter with the new value
-        params.set('redirect_uri', newRedirectUri.toString());
-        
-        // Return the final modified URL string
-        return oauthUrl.toString();
-    } catch (error) {
-        console.error("Error parsing or modifying the existing redirect_uri:", error);
-        return originalUrl; // Return original URL on error
-    }
-}
-
 // --- Main processing for a single account ---
-async function processAccount(gmail, account) {
+async function processAccount(account) {
 	logger.info(`Processing account: ${account.name}`);
 
 	// mark sync started
@@ -205,7 +164,7 @@ async function processAccount(gmail, account) {
 
 	// ensure label exists
 	const labelName = account.label || account.name;
-	const labelId = await getOrCreateLabel(gmail, labelName);
+	const labelId = await getOrCreateLabel(labelName);
 	logger.info(`Label ${labelName} => ${labelId}`);
 
 	let pop;
@@ -234,7 +193,7 @@ async function processAccount(gmail, account) {
 				const rawBuf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw, "binary");
 
 				// import into Gmail
-				const result = await importMessage(gmail, rawBuf, labelId);
+				const result = await importMessage(rawBuf, labelId);
 				if (result && result.id) {
 					logger.info(
 						`Imported message => Gmail ID ${result.id}. Deleting POP message #${i}`
@@ -330,9 +289,6 @@ async function main() {
 		logger.warn('Failed to start status server: ' + (e.message || e));
 	}
 
-	const oauthClient = await getOauthClient(cfg);
-	const gmail = google.gmail({ version: "v1", auth: oauthClient });
-
 	// Setup shutdown handlers
 	process.on("SIGINT", () => {
 		logger.info("SIGINT received");
@@ -346,14 +302,7 @@ async function main() {
 	});
 
 	while (!shuttingDown) {
-		for (const account of cfg.accounts) {
-			if (shuttingDown) break;
-			try {
-				await processAccount(gmail, account);
-			} catch (err) {
-				logger.error("Error processing account: " + (err.message || err));
-			}
-		}
+		const oauthClient = await getOauthClient(cfg);
 
 		// persist token if refreshed
 		try {
@@ -362,9 +311,20 @@ async function main() {
 			const tokens = oauthClient.credentials || {};
 			if (tokens.refresh_token && tokens.access_token) {
 				writeFileSync(tokenFile, JSON.stringify(tokens, null, 2));
+				logger.info(`Saved token to ${tokenFile}`);
 			}
 		} catch (err) {
 			logger.warn("Failed to persist token: " + (err.message || err));
+		}
+
+		// the main per-account processing loop
+		for (const account of cfg.accounts) {
+			if (shuttingDown) break;
+			try {
+				await processAccount(account);
+			} catch (err) {
+				logger.error("Error processing account: " + (err.message || err));
+			}
 		}
 
 		if (shuttingDown) break;
