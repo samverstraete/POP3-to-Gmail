@@ -1,6 +1,7 @@
 gmail:
   client_secrets_file: "./data/credentials.json"
   token_file: "./data/token.json"
+  redirect_helper: "http://example.com/redirect.php"
 
 check_interval_minutes: 60
 log_dir: "./logs"

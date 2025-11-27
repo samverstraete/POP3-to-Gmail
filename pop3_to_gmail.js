@@ -75,7 +75,7 @@ function wait(ms) {
 // Start a simple status HTTP server (idempotent). Exposes:
 // - GET /oauthcallback?code=...&state=... -> handles OAuth callbacks if registered
 // - GET /status -> simple HTML table
-function startStatusServer(statsStore, port) {
+function startStatusServer(statsStore, port, cfg) {
 	if (httpServer) return httpServer;
 	const p = Number(port || process.env.STATUS_PORT || 3000);
 	httpServer = http.createServer((req, res) => {
@@ -115,10 +115,30 @@ function startStatusServer(statsStore, port) {
 						<body><div class="container">
 							<h2>Status</h2>
 							<p>Updated: ${new Date(data.updatedAt || Date.now()).toString()}</p>`;
-					const newurl = getAuthorizeUrl(`http://${req.headers.host}/oauthcallback`);
+
+					// Construct the desired redirect URI. If the host is local (localhost or 127.0.0.1)
+					// use the callback directly so the OAuth flow returns to the running service.
+					// Otherwise build a remote redirect helper and pass the base64-encoded
+					// local callback as the 'lnk' parameter.
+					const host = req.headers.host;
+					const callbackUrl = `http://${host}/oauthcallback`;
+					let redirectUri;
+					// allow an override via config or environment variable
+					const redirectHelperBase = (cfg && cfg.gmail.redirect_helper) || process.env.REDIRECT_HELPER_URL || callbackUrl;
+
+					if (host.includes("localhost") || host.includes("127.0.0.1")) {
+						redirectUri = callbackUrl;
+					} else {
+						const encoded = Buffer.from(callbackUrl, "utf8").toString("base64");
+						// if the configured helper already contains a querystring, append, otherwise start one
+						const sep = redirectHelperBase.includes('?') ? '&' : '?';
+						redirectUri = `${redirectHelperBase}${sep}lnk=${encoded}`;
+					}
+					const newurl = getAuthorizeUrl(redirectUri);
 					if (newurl) {
 						html += `<div class="alert alert-primary" role="alert"><strong>Waiting for OAuth authorization:</strong> <a href="${newurl}">Click here</a></div>`;
 					}
+                    
 					html += `<h2>Statistics</h2>
 						<table class="table">
 							<tr><th>Account</th><th>Last Sync</th><th>Day</th><th>Week</th><th>Month</th><th>Year</th><th>Total</th></tr>`;
@@ -284,7 +304,7 @@ async function main() {
 		}
 		// fallback
 		if (!redirectPort) redirectPort = 3000;
-		startStatusServer(stats, redirectPort);
+		startStatusServer(stats, redirectPort, cfg);
 	} catch (e) {
 		logger.warn('Failed to start status server: ' + (e.message || e));
 	}

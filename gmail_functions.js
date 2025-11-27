@@ -1,4 +1,4 @@
-const { existsSync, readFileSync, writeFileSync } = require("node:fs");
+const { existsSync, readFileSync } = require("node:fs");
 const { google } = require("googleapis");
 const authWaiters = new Map(); // pathname -> { oauth2Client, resolve, reject }
 let logger = console; // default logger
