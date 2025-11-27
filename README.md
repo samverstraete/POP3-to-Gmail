@@ -32,7 +32,6 @@ node .\pop3_to_gmail.js .\data\config.yaml
 - `check_interval_minutes` — how often to poll accounts (default: 5).
 - `status_port` — optional port for the built-in status page; if not set the app will attempt to use the OAuth redirect port from the credentials so OAuth and status share the same listener.
 - `stats_file` — path where persistent stats are stored (defaults to `./data/stats.json`). This can be set in `config.yaml` or via the `STATS_FILE` environment variable.
-- `redirect_helper` — optional URL of an external redirect helper used when the status page is exposed on a non-local host. When the status page is accessed remotely the app will base64-encode the desired local callback and append it as `lnk=` to this helper URL. You can also set `REDIRECT_HELPER_URL` environment variable as an alternative.
 - `accounts` — array of POP3 account blocks; each account should include `name`, `server`, `port`, `username`, `password`, and optional flags like `tls`, `ssl`, `label`.
 
 Example `config.yaml` (minimal)
@@ -61,10 +60,12 @@ By default the server binds to the OAuth redirect port (if present in the creden
 
 Persistent stats are stored in a configurable file (see `stats_file` in `config.yaml`, or the `STATS_FILE` environment variable). The `stats_store.js` module records per-account import timestamps and last sync status. The store prunes timestamps older than ~400 days to keep the file reasonably small.
 
-When the status page is not served from localhost, the status page uses a redirect helper to allow completing the OAuth flow — the local callback (http://<host>/oauthcallback) is base64 encoded and appended as `lnk=` to the helper URL. Configure that helper with `redirect_helper` in `config.yaml` or set `REDIRECT_HELPER_URL` in the environment. For example:
+When the status page is not served from localhost, the status page uses a redirect helper to allow completing the OAuth flow — the local callback (http://<host>/oauthcallback) is base64 encoded and appended as `lnk=` to the helper URL. Configure that helper with `redirect_uris` in `credentials.json` or set `REDIRECT_HELPER_URL` in the environment. For example:
 
-```yaml
-redirect_helper: "https://example.com/redirect.php"
+```json
+"redirect_uris": [
+  "https://example.com/redirect.php"
+]
 ```
 
 ## Development notes

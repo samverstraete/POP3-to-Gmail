@@ -75,7 +75,7 @@ function wait(ms) {
 // Start a simple status HTTP server (idempotent). Exposes:
 // - GET /oauthcallback?code=...&state=... -> handles OAuth callbacks if registered
 // - GET /status -> simple HTML table
-function startStatusServer(statsStore, port, cfg) {
+function startStatusServer(statsStore, port, secondhop) {
 	if (httpServer) return httpServer;
 	const p = Number(port || process.env.STATUS_PORT || 3000);
 	httpServer = http.createServer((req, res) => {
@@ -123,16 +123,14 @@ function startStatusServer(statsStore, port, cfg) {
 					const host = req.headers.host;
 					const callbackUrl = `http://${host}/oauthcallback`;
 					let redirectUri;
-					// allow an override via config or environment variable
-					const redirectHelperBase = (cfg && cfg.gmail.redirect_helper) || process.env.REDIRECT_HELPER_URL || callbackUrl;
 
 					if (host.includes("localhost") || host.includes("127.0.0.1")) {
 						redirectUri = callbackUrl;
 					} else {
 						const encoded = Buffer.from(callbackUrl, "utf8").toString("base64");
 						// if the configured helper already contains a querystring, append, otherwise start one
-						const sep = redirectHelperBase.includes('?') ? '&' : '?';
-						redirectUri = `${redirectHelperBase}${sep}lnk=${encoded}`;
+						const sep = secondhop.includes('?') ? '&' : '?';
+						redirectUri = `${secondhop}${sep}lnk=${encoded}`;
 					}
 					const newurl = getAuthorizeUrl(redirectUri);
 					if (newurl) {
@@ -284,27 +282,26 @@ async function main() {
 	// Start status server on the OAuth redirect port if possible so the
 	// status page and the OAuth callback share the same listener.
 	try {
-		const credFile = cfg.gmail && cfg.gmail.client_secrets_file ? cfg.gmail.client_secrets_file : 'credentials.json';
+		const credFile = cfg.gmail && cfg.gmail.client_secrets_file ? cfg.gmail.client_secrets_file : "credentials.json";
 		let redirectPort = cfg.status_port || process.env.STATUS_PORT;
+		let redirectHelperBase = process.env.REDIRECT_HELPER_URL;
 		if (!redirectPort && existsSync(credFile)) {
 			try {
-				const raw = JSON.parse(readFileSync(credFile, 'utf8'));
+				const raw = JSON.parse(readFileSync(credFile, "utf8"));
 				const o = raw.installed || raw.web;
 				if (o && Array.isArray(o.redirect_uris) && o.redirect_uris.length > 0) {
 					try {
 						const ru = new url.URL(o.redirect_uris[0]);
-						redirectPort = ru.port ? Number(ru.port) : (ru.protocol === 'http:' ? 80 : 443);
-					} catch (e) {
-						// ignore
-					}
+						redirectHelperBase = o.redirect_uris[0];
+						redirectPort = ru.port ? Number(ru.port) : ru.protocol === "http:" ? 80 : 443;
+					} catch (e) { } // ignore
 				}
-			} catch (e) {
-				// ignore parse errors
-			}
+			} catch (e) { } // ignore parse errors
 		}
 		// fallback
 		if (!redirectPort) redirectPort = 3000;
-		startStatusServer(stats, redirectPort, cfg);
+		if (!redirectHelperBase) redirectHelperBase = `http://localhost:${redirectPort}/oauthcallback`;
+		startStatusServer(stats, redirectPort, redirectHelperBase);
 	} catch (e) {
 		logger.warn('Failed to start status server: ' + (e.message || e));
 	}
