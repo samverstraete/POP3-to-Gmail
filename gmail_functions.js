@@ -42,7 +42,6 @@ async function getOauthClient(config) {
 	const redirect_uri = o.redirect_uris && o.redirect_uris[0];
 	if (!redirect_uri) throw new Error("No redirect_uri found in credentials");
 
-	const pathname = new URL(redirect_uri).pathname;
 	oauth2Client = new google.auth.OAuth2(
 		client_id,
 		client_secret,
@@ -84,7 +83,7 @@ async function getOauthClient(config) {
 	logger.warn("No token found — manual OAuth web flow required, go to the status page.");
 	awaitingAuth = true;
 	return new Promise((resolve, reject) => {
-      authWaiters.set(pathname, { oauth2Client, resolve, reject });
+      authWaiters.set("/oauthcallback", { oauth2Client, resolve, reject });
       // the waiter will be removed by the server when it handles the callback
     });
 }
