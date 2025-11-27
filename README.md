@@ -60,7 +60,7 @@ By default the server binds to the OAuth redirect port (if present in the creden
 
 Persistent stats are stored in a configurable file (see `stats_file` in `config.yaml`, or the `STATS_FILE` environment variable). The `stats_store.js` module records per-account import timestamps and last sync status. The store prunes timestamps older than ~400 days to keep the file reasonably small.
 
-When the status page is not served from localhost, the status page uses a redirect helper to allow completing the OAuth flow — the local callback (http://<host>/oauthcallback) is base64 encoded and appended as `lnk=` to the helper URL. Configure that helper with `redirect_uris` in `credentials.json` or set `REDIRECT_HELPER_URL` in the environment. For example:
+When the status page is not served from localhost, the status page uses a redirect helper to allow completing the OAuth flow — the local callback (http://<host>/oauthcallback) is base64 encoded and appended as `data=` to the helper URL. Configure that helper with `redirect_uris` in `credentials.json` or set `REDIRECT_HELPER_URL` in the environment. For example:
 
 ```json
 "redirect_uris": [
