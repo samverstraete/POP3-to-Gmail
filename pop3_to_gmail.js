@@ -285,15 +285,15 @@ async function main() {
 		const credFile = cfg.gmail && cfg.gmail.client_secrets_file ? cfg.gmail.client_secrets_file : "credentials.json";
 		let redirectPort = cfg.status_port || process.env.STATUS_PORT;
 		let redirectHelperBase = process.env.REDIRECT_HELPER_URL;
-		if (!redirectPort && existsSync(credFile)) {
+		if (existsSync(credFile)) {
 			try {
 				const raw = JSON.parse(readFileSync(credFile, "utf8"));
 				const o = raw.installed || raw.web;
 				if (o && Array.isArray(o.redirect_uris) && o.redirect_uris.length > 0) {
 					try {
 						const ru = new url.URL(o.redirect_uris[0]);
-						redirectHelperBase = o.redirect_uris[0];
-						redirectPort = ru.port ? Number(ru.port) : ru.protocol === "http:" ? 80 : 443;
+						if (!redirectHelperBase) redirectHelperBase = o.redirect_uris[0];
+						if (!redirectPort) redirectPort = ru.port ? Number(ru.port) : ru.protocol === "http:" ? 80 : 443;
 					} catch (e) { } // ignore
 				}
 			} catch (e) { } // ignore parse errors
