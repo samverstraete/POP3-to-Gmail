@@ -129,8 +129,10 @@ function startStatusServer(statsStore, port, secondhop) {
 						redirectUri = callbackUrl;
 						redirectParam = "";
 					} else {
-						redirectParam = Buffer.from(callbackUrl, "utf8").toString("base64");
-						redirectUri = secondhop;
+						const encoded = Buffer.from(callbackUrl, "utf8").toString("base64");
+						// if the configured helper already contains a querystring, append, otherwise start one
+						const sep = secondhop.includes('?') ? '&' : '?';
+						redirectUri = `${secondhop}${sep}lnk=${encoded}`;
 					}
 					const newurl = getAuthorizeUrl(redirectUri, redirectParam);
 					if (newurl) {
