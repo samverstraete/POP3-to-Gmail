@@ -12,5 +12,7 @@ services:
       - /data/pop3_to_gmail:/usr/src/app/data:rw
     environment:
       - STATUS_PORT=3000
-    entrypoint: ["/bin/sh","-c","exec node /usr/src/app/pop3_to_gmail.js /usr/src/app/data/config.yaml"]
+    # The image includes an entrypoint that attempts to fix ownership of mounted
+    # volumes so the unprivileged `node` user can write to `/usr/src/app/data`.
+    entrypoint: ["/usr/local/bin/docker-entrypoint.sh","node","/usr/src/app/pop3_to_gmail.js","/usr/src/app/data/config.yaml"]
     restart: unless-stopped
