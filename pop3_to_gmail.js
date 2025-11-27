@@ -129,7 +129,7 @@ function startStatusServer(statsStore, port, secondhop) {
 						redirectUri = callbackUrl;
 						redirectParam = "";
 					} else {
-						redirectParam = Buffer.from(callbackUrl, "utf8").toString("base64");
+						redirectParam = Buffer.from(`SECONDHOPLINK${callbackUrl}`, "utf8").toString("base64");
             			redirectUri = secondhop;
 					}
 					const newurl = getAuthorizeUrl(redirectUri, redirectParam);
