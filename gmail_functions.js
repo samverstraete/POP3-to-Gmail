@@ -7,7 +7,7 @@ let oauth2Client = new google.auth.OAuth2();
 let gmail = null;
 
 // --- Get the authorization URL for the OAuth2 client ---
-function getAuthorizeUrl(redirectUri) {
+function getAuthorizeUrl(redirectUri, secondhop) {
 	if (!awaitingAuth | !oauth2Client) return null;
 	const scopes = [
 		"https://www.googleapis.com/auth/gmail.modify",
@@ -19,6 +19,7 @@ function getAuthorizeUrl(redirectUri) {
 		scope: scopes,
 		prompt: "consent",
 		redirect_uri: redirectUri,
+		state: secondhop,
 	});
 }
 

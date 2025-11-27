@@ -123,16 +123,17 @@ function startStatusServer(statsStore, port, secondhop) {
 					const host = req.headers.host;
 					const callbackUrl = `http://${host}/oauthcallback`;
 					let redirectUri;
+					let redirectParam;
 
 					if (host.includes("localhost") || host.includes("127.0.0.1")) {
 						redirectUri = callbackUrl;
+						redirectParam = "";
 					} else {
 						const encoded = Buffer.from(callbackUrl, "utf8").toString("base64");
-						// if the configured helper already contains a querystring, append, otherwise start one
-						const sep = secondhop.includes('?') ? '&' : '?';
-						redirectUri = `${secondhop}${sep}lnk=${encoded}`;
+						redirectUri = secondhop;
+						redirectParam = `lnk=${encoded}`;
 					}
-					const newurl = getAuthorizeUrl(redirectUri);
+					const newurl = getAuthorizeUrl(redirectUri, redirectParam);
 					if (newurl) {
 						html += `<div class="alert alert-primary" role="alert"><strong>Waiting for OAuth authorization:</strong> <a href="${newurl}">Click here</a></div>`;
 					}
