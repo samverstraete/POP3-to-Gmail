@@ -64,9 +64,14 @@ async function getOauthClient(config) {
 					// google-auth-library exposes refreshToken method via getRequestHeaders or so;
 					// using setCredentials + getAccessToken will refresh transparently in many versions
 					const res = await oauth2Client.getAccessToken();
-					logger.info("Token refreshed.");
-					// no need to save, this is done in the main loop
-					gmail = google.gmail({ version: "v1", auth: oauth2Client });
+					if (res.token) { 
+						oauth2Client.setCredentials({ access_token: res.token });
+						logger.info("Token refreshed.");
+						// no need to save, this is done in the main loop
+						gmail = google.gmail({ version: "v1", auth: oauth2Client }); 
+					} else {
+						logger.warn("Refresh attempt did not return a new token: " + JSON.stringify(res.res));
+					}
 				} catch (e) {
 					logger.warn("Refresh attempt failed: " + (e.message || e));
 				}
