@@ -13,12 +13,13 @@ const url = require("node:url");
 
 const { parse } = require("yaml");
 const { popConnect, popStat, popRetr, popDele, popQuit } = require("./pop3_functions.js");
-const { getOauthClient, getOrCreateLabel, importMessage, setGfLogger, getAuthWaiter, deleteAuthWaiter, getAuthorizeUrl, finishAuthWaiter } = require("./gmail_functions.js");
+const { setGfLogger, getAuthWaiter, deleteAuthWaiter, finishAuthWaiter, GmailClient } = require("./gmail_functions.js");
 // stats store will be created after loading config so we can pass a path from config
 let stats = null;
 const { StatsStore } = require("./stats_store.js");
 const destroyer = require("server-destroy");
 let httpServer = null;
+let gmailclient = null;
 
 const { createLogger, format, transports } = require("winston");
 const DailyRotateFile = require("winston-daily-rotate-file");
@@ -132,9 +133,12 @@ function startStatusServer(statsStore, port, secondhop) {
 						redirectParam = Buffer.from(`SECONDHOPLINK${callbackUrl}`, "utf8").toString("base64");
             			redirectUri = secondhop;
 					}
-					const newurl = getAuthorizeUrl(redirectUri, redirectParam);
-					if (newurl) {
-						html += `<div class="alert alert-primary" role="alert"><strong>Waiting for OAuth authorization:</strong> <a href="${newurl}">Click here</a></div>`;
+					
+					if (gmailclient) {
+						const newurl = gmailclient.getAuthorizeUrl(redirectUri, redirectParam);
+						if (newurl) {
+							html += `<div class="alert alert-primary" role="alert"><strong>Waiting for OAuth authorization:</strong> <a href="${newurl}">Click here</a></div>`;
+						}
 					}
                     
 					html += `<h2>Statistics</h2>
@@ -174,7 +178,7 @@ function startStatusServer(statsStore, port, secondhop) {
 }
 
 // --- Main processing for a single account ---
-async function processAccount(account) {
+async function processAccount(account, gmailclient) {
 	logger.info(`Processing account: ${account.name}`);
 
 	// mark sync started
@@ -182,7 +186,7 @@ async function processAccount(account) {
 
 	// ensure label exists
 	const labelName = account.label || account.name;
-	const labelId = await getOrCreateLabel(labelName);
+	const labelId = await gmailclient.getOrCreateLabel(labelName);
 	logger.info(`Label ${labelName} => ${labelId}`);
 
 	let pop;
@@ -211,7 +215,7 @@ async function processAccount(account) {
 				const rawBuf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw, "binary");
 
 				// import into Gmail
-				const result = await importMessage(rawBuf, labelId);
+				const result = await gmailclient.importMessage(rawBuf, labelId);
 				if (result && result.id) {
 					logger.info(
 						`Imported message => Gmail ID ${result.id}. Deleting POP message #${i}`
@@ -220,17 +224,11 @@ async function processAccount(account) {
 					try { stats.recordImport(account.name); } catch (e) {}
 				} else {
 					logger.warn(
-						`Import returned no id for account ${
-							account.name
-						} POP#${i}: ${JSON.stringify(result)}`
+						`Import returned no id for account ${account.name} POP#${i}: ${JSON.stringify(result)}`
 					);
 				}
 			} catch (err) {
-				logger.error(
-					`Failed processing POP#${i} for ${account.name}: ${
-						err.message || err
-					}`
-				);
+				logger.error(`Failed processing POP#${i} for ${account.name}: ${err.message || err}`);
 			}
 		}
 	} catch (err) {
@@ -319,26 +317,13 @@ async function main() {
 	});
 
 	while (!shuttingDown) {
-		const oauthClient = await getOauthClient(cfg);
-
-		// persist token if refreshed
-		try {
-			const tokenFile =
-				cfg.gmail && cfg.gmail.token_file ? cfg.gmail.token_file : "token.json";
-			const tokens = oauthClient.credentials || {};
-			if (tokens.refresh_token && tokens.access_token) {
-				writeFileSync(tokenFile, JSON.stringify(tokens, null, 2));
-				logger.info(`Saved token to ${tokenFile}`);
-			}
-		} catch (err) {
-			logger.warn("Failed to persist token: " + (err.message || err));
-		}
+		gmailclient = await GmailClient(cfg);
 
 		// the main per-account processing loop
 		for (const account of cfg.accounts) {
 			if (shuttingDown) break;
 			try {
-				await processAccount(account);
+				await processAccount(account, gmailclient);
 			} catch (err) {
 				logger.error("Error processing account: " + (err.message || err));
 			}
