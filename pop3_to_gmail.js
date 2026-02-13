@@ -6,14 +6,14 @@
 */
 "use strict";
 
-const { existsSync, mkdirSync, readFileSync, writeFileSync } = require("node:fs");
+const { existsSync, mkdirSync, readFileSync } = require("node:fs");
 const path = require("node:path");
 const http = require("node:http");
 const url = require("node:url");
 
 const { parse } = require("yaml");
 const { popConnect, popStat, popRetr, popDele, popQuit } = require("./pop3_functions.js");
-const { setGfLogger, getAuthWaiter, deleteAuthWaiter, finishAuthWaiter, GmailClient } = require("./gmail_functions.js");
+const { setGfLogger, getAuthWaiter, finishAuthWaiter, GmailClient } = require("./gmail_functions.js");
 // stats store will be created after loading config so we can pass a path from config
 let stats = null;
 const { StatsStore } = require("./stats_store.js");
@@ -23,7 +23,7 @@ let gmailclient = null;
 
 const { createLogger, format, transports } = require("winston");
 const DailyRotateFile = require("winston-daily-rotate-file");
-const { log } = require("node:console");
+//const { log } = require("node:console");
 
 const DEFAULT_LOG_DIR = path.normalize(process.env.LOG_DIR || "./logs");
 if (!existsSync(DEFAULT_LOG_DIR))
@@ -88,7 +88,6 @@ function startStatusServer(statsStore, port, secondhop) {
 			if (waiter) {
 				const code = reqUrl.searchParams.get('code');
 				const error = reqUrl.searchParams.get('error');
-				deleteAuthWaiter(reqUrl.pathname);
 				if (error) {
 					res.statusCode = 400;
 					res.end('Authentication failed: ' + error);
@@ -182,7 +181,7 @@ async function processAccount(account, gmailclient) {
 	logger.info(`Processing account: ${account.name}`);
 
 	// mark sync started
-	try { stats.recordSyncStatus(account.name, 'started', null); } catch (e) { /* ignore */ }
+	stats.recordSyncStatus(account.name, 'started', null);
 
 	// ensure label exists
 	const labelName = account.label || account.name;
@@ -193,10 +192,8 @@ async function processAccount(account, gmailclient) {
 	try {
 		pop = await popConnect(account);
 	} catch (err) {
-		logger.error(
-			`POP3 connect/login failed for ${account.name}: ${err.message || err}`
-		);
-		try { stats.recordSyncStatus(account.name, 'fail', err.message || String(err)); } catch (e) {}
+		logger.error(`POP3 connect/login failed for ${account.name}: ${err.message || err}`);
+		stats.recordSyncStatus(account.name, 'fail', err.message || String(err));
 		return;
 	}
 
@@ -217,39 +214,22 @@ async function processAccount(account, gmailclient) {
 				// import into Gmail
 				const result = await gmailclient.importMessage(rawBuf, labelId);
 				if (result && result.id) {
-					logger.info(
-						`Imported message => Gmail ID ${result.id}. Deleting POP message #${i}`
-					);
+					logger.info(`Imported message => Gmail ID ${result.id}. Deleting POP message #${i}`);
 					await popDele(pop, i);
-					try { stats.recordImport(account.name); } catch (e) {}
+					stats.recordImport(account.name);
 				} else {
-					logger.warn(
-						`Import returned no id for account ${account.name} POP#${i}: ${JSON.stringify(result)}`
-					);
+					logger.warn(`Import returned no id for account ${account.name} POP#${i}: ${JSON.stringify(result)}`);
 				}
 			} catch (err) {
 				logger.error(`Failed processing POP#${i} for ${account.name}: ${err.message || err}`);
 			}
 		}
+		stats.recordSyncStatus(account.name, 'success', null);
 	} catch (err) {
-		logger.error(
-			`POP3 stat or retrieval failed for ${account.name}: ${err.message || err}`
-		);
-		try { stats.recordSyncStatus(account.name, 'fail', err.message || String(err)); } catch (e) {}
+		logger.error(`POP3 stat or retrieval failed for ${account.name}: ${err.message || err}`);
+		stats.recordSyncStatus(account.name, 'fail', err.message || String(err));
 	} finally {
-		try {
-			await popQuit(pop);
-		} catch (e) {
-			/* ignore */
-		}
-		// mark sync success if not already failed
-		try {
-			const acc = stats.getAccountStats ? stats.getAccountStats(account.name) : null;
-			// if last_sync is 'started', switch to success
-			if (!acc || (acc.last_sync && acc.last_sync.status === 'started')) {
-				try { stats.recordSyncStatus(account.name, 'success', null); } catch (e) {}
-			}
-		} catch (e) {}
+		await popQuit(pop);
 	}
 }
 
@@ -317,15 +297,19 @@ async function main() {
 	});
 
 	while (!shuttingDown) {
-		gmailclient = await GmailClient(cfg);
+		gmailclient = new GmailClient(cfg);
 
+		const auth = await gmailclient.authenticate();
+		
 		// the main per-account processing loop
-		for (const account of cfg.accounts) {
-			if (shuttingDown) break;
-			try {
-				await processAccount(account, gmailclient);
-			} catch (err) {
-				logger.error("Error processing account: " + (err.message || err));
+		if (auth.token) {
+			for (const account of cfg.accounts) {
+				if (shuttingDown) break;
+				try {
+					await processAccount(account, gmailclient);
+				} catch (err) {
+					logger.error("Error processing account: " + (err.message || err));
+				}
 			}
 		}
 
