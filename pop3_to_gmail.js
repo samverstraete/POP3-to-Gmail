@@ -6,7 +6,7 @@
 */
 "use strict";
 
-const { existsSync, mkdirSync, readFileSync } = require("node:fs");
+const { existsSync, mkdirSync, readFileSync, unlink } = require("node:fs");
 const path = require("node:path");
 const http = require("node:http");
 const url = require("node:url");
@@ -103,7 +103,39 @@ function startStatusServer(statsStore, port, secondhop) {
 				logger.info('OAuth authentication successful via callback');
 				return;
 			}
-			else if (reqUrl.pathname === '/status') {
+			else if (reqUrl.pathname === '/status') {		
+				const cfg = loadConfig(process.argv[2]);
+                const tokenPath = cfg.gmail.token_file;			
+				if (req.method === 'POST') {
+					let body = '';
+					req.on('data', d => body += d);
+					req.on('end', () => {
+						try {
+							const postData = JSON.parse(body);
+							if (postData.deleteToken) {
+								unlink(tokenPath, (err) => {
+									if (err) {
+										res.statusCode = 500;
+										res.setHeader('Content-Type', 'application/json');
+										res.end(JSON.stringify({ ok: false, message: 'Error deleting token: ' + (err.message || err) }));
+									} else {
+										res.setHeader('Content-Type', 'application/json');
+										res.end(JSON.stringify({ ok: true, message: 'Token deleted. Restart the application to re-authenticate.' }));
+									}
+								});
+								return;
+							} 
+							res.statusCode = 400;
+							res.setHeader('Content-Type', 'application/json');
+							res.end(JSON.stringify({ ok: false, message: 'Unknown action' }));
+						} catch (e) {
+							res.statusCode = 400;
+							res.setHeader('Content-Type', 'application/json');
+							res.end(JSON.stringify({ ok: false, message: 'Invalid JSON' }));
+						}
+					});
+					return;
+				}
 				if (statsStore && typeof statsStore.getAllStats === 'function') {
 					const data = statsStore.getAllStats();
 					res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -113,6 +145,7 @@ function startStatusServer(statsStore, port, secondhop) {
 							<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
 						</head>
 						<body><div class="container">
+							<div id="statusAlert" class="alert alert-warning d-none" role="alert" style="display:none;"></div>
 							<h2>Status</h2>
 							<p>Updated: ${new Date(data.updatedAt || Date.now()).toString()}</p>`;
 
@@ -140,6 +173,11 @@ function startStatusServer(statsStore, port, secondhop) {
 						}
 					}
                     
+					if (existsSync(tokenPath)) {
+						html += `<div id="tokenDelete" class="mb-3">
+							<button class="btn btn-danger" onclick="postAction({deleteToken: true})">Delete Token</button>
+						</div>`;
+					}
 					html += `<h2>Statistics</h2>
 						<table class="table">
 							<tr><th>Account</th><th>Last Sync</th><th>Day</th><th>Week</th><th>Month</th><th>Year</th><th>Total</th></tr>`;
@@ -148,7 +186,25 @@ function startStatusServer(statsStore, port, secondhop) {
 						const ls = v.last_sync ? `${new Date(v.last_sync.time).toString()} | <span class="badge bg-info text-dark">${v.last_sync.status}</span>` + (v.last_sync.message?` - ${v.last_sync.message}`:'') : 'n/a';
 						html += `<tr><td>${k}</td><td>${ls}</td><td>${v.counts.day}</td><td>${v.counts.week}</td><td>${v.counts.month}</td><td>${v.counts.year}</td><td>${v.counts.total}</td></tr>`;
 					}
-					html += '</table></div></body></html>';
+					html += `</table></div>` + `
+				<script>
+					async function postAction(payload) {
+						try {
+							const resp = await fetch('/status', {
+								method: 'POST',
+								headers: {'Content-Type': 'application/json'},
+								body: JSON.stringify(payload)
+							});
+							const data = await resp.json();
+							const el = document.getElementById('statusAlert');
+							el.textContent = data.message;
+							el.style.display = 'block';
+							el.classList.remove('d-none');
+						} catch (err) {
+							console.log('Request failed: ' + (err.message || err));
+						}
+					}
+				</script>` + `</body></html>`;
 					res.end(html);
 					return;
 				} else {

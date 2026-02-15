@@ -1,4 +1,4 @@
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+//process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 const { existsSync, readFileSync, writeFileSync } = require("node:fs");
 const { google } = require("googleapis");
 const authWaiters = new Map(); // pathname -> { oauth2Client, resolve, reject }
