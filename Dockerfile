@@ -1,5 +1,5 @@
-# Use an LTS Node image
-FROM node:lts-alpine
+# Use a Node image
+FROM node:slim
 
 # Create app directory
 WORKDIR /usr/src/app
