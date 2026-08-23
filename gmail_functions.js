@@ -1,6 +1,7 @@
 //process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 const { existsSync, readFileSync, writeFileSync } = require("node:fs");
-const { google } = require("googleapis");
+const { OAuth2Client } = require("google-auth-library");
+const { gmail } = require("@googleapis/gmail");
 const authWaiters = new Map(); // pathname -> { oauth2Client, resolve, reject }
 let logger = console; // default logger
 let awaitingAuth = false;
@@ -28,9 +29,9 @@ class GmailClient {
     if (!redirect_uri) throw new Error("No redirect_uri found in credentials");
 
     // Initialize the OAuth2 client
-    this.oauth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uri);
+    this.oauth2Client = new OAuth2Client(client_id, client_secret, redirect_uri);
     // Initialize the Gmail API client with the OAuth2 client as auth
-    this.gmail = google.gmail({
+    this.gmail = gmail({
       version: "v1",
       auth: this.oauth2Client,
       //proxy: "http://127.0.0.1:8080",
