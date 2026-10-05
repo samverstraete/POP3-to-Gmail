@@ -67,39 +67,37 @@ class GmailClient {
       });
   }
 
-  authenticate() {
-    // Load token if present
-    if (existsSync(this.tokenFile)) {
-      try {
-        const token = JSON.parse(readFileSync(this.tokenFile));
-        this.oauth2Client.setCredentials(token);
-        if (token.refresh_token) {
-          // getAccessToken will automatically refresh if needed, and trigger the "tokens" event to save the new token
-          logger.info("Getting access token, using refresh token if required...");
-          return this.oauth2Client
-            .getAccessToken()
-            .then((res) => {
-              this.oauth2Client.setCredentials({ access_token: res.token });
-              logger.info("Token refreshed.");
-              return { token };
-            })
-            .catch((err) => {
-              logger.warn(
-                "Refresh attempt did not return a new token: " + JSON.stringify(err.response.data.error || err),
-              );
-              awaitingAuth = true;
-              return { res: null, err };
-            });
-        }
-      } catch (e) {
-        logger.warn("Failed to load token file: " + (e.message || e));
-      }
+  async authenticate() {
+    if (!existsSync(this.tokenFile)) {
+      logger.warn("No token file — OAuth web flow required, go to the status page.");
+      awaitingAuth = true;
+      return { token: null };
     }
-
-    // No token: start web OAuth flow
-    logger.warn("No refresh token found — manual OAuth web flow required, go to the status page.");
-    awaitingAuth = true;
-    return { res: null };
+    let token;
+    try {
+      token = JSON.parse(readFileSync(this.tokenFile, "utf8"));
+    } catch (e) {
+      logger.warn("Failed to read token file: " + (e.message || e));
+      return { token: null };
+    }
+    if (!token.refresh_token) {
+      awaitingAuth = true;
+      return { token: null };
+    }
+    this.oauth2Client.setCredentials(token);
+    try {
+      await this.oauth2Client.getAccessToken(); // refreshes if needed, keeps refresh_token
+      return { token };
+    } catch (err) {
+      const code = err?.response?.data?.error;
+      if (code === "invalid_grant") {
+        logger.error("Refresh token revoked/expired (invalid_grant) — re-login needed.");
+        awaitingAuth = true;
+      } else {
+        logger.warn("Token refresh failed (probably transient): " + (err.message || err));
+      }
+      return { token: null, err };
+    }
   }
 
   // --- Get the authorization URL for the OAuth2 client ---
@@ -140,17 +138,14 @@ class GmailClient {
     }
   }
 
-  importMessage(rawBytes, labelId) {
+  async importMessage(rawBytes, labelId) {
     if (!this.gmail) throw new Error("Gmail client not initialized");
     // rawBytes: Buffer or string (CRLF)
     const rawB64 = Buffer.from(rawBytes).toString("base64url");
-    const res = this.gmail.users.messages.import({
+    const res = await this.gmail.users.messages.import({
       userId: "me",
       internalDateSource: "dateHeader",
-      requestBody: {
-        raw: rawB64,
-        labelIds: [labelId, "INBOX", "UNREAD"],
-      },
+      requestBody: { raw: rawB64, labelIds: [labelId, "INBOX", "UNREAD"] },
     });
     return res.data;
   }
