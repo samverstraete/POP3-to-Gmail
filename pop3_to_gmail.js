@@ -241,12 +241,15 @@ async function processAccount(account, gmailclient) {
 
 	// ensure label exists
 	const labelName = account.label || account.name;
+	logger.info(`Ensuring Gmail label for ${account.name}: ${labelName}`);
 	const labelId = await gmailclient.getOrCreateLabel(labelName);
 	logger.info(`Label ${labelName} => ${labelId}`);
 
 	let pop;
 	try {
+		logger.info(`Connecting to POP3 account ${account.name} (${account.server}:${account.port})`);
 		pop = await popConnect(account);
+		logger.info(`POP3 connection established for ${account.name}`);
 	} catch (err) {
 		logger.error(`POP3 connect/login failed for ${account.name}: ${err.message || err}`);
 		stats.recordSyncStatus(account.name, 'fail', err.message || String(err));
@@ -278,14 +281,24 @@ async function processAccount(account, gmailclient) {
 				}
 			} catch (err) {
 				logger.error(`Failed processing POP#${i} for ${account.name}: ${err.message || err}`);
+				if (err.message === "Gmail reauthentication required" || gmailclient.requiresReauth) {
+					logger.warn(`Stopping sync for ${account.name} because Gmail requires re-authentication`);
+					break;
+				}
 			}
 		}
+		logger.info(`Finished processing POP3 account ${account.name}; marking sync as successful`);
 		stats.recordSyncStatus(account.name, 'success', null);
 	} catch (err) {
 		logger.error(`POP3 stat or retrieval failed for ${account.name}: ${err.message || err}`);
 		stats.recordSyncStatus(account.name, 'fail', err.message || String(err));
 	} finally {
-		await popQuit(pop);
+		try {
+			await popQuit(pop);
+			logger.info(`POP3 session closed for ${account.name}`);
+		} catch (quitErr) {
+			logger.warn(`POP3 quit for ${account.name} failed: ${quitErr.message || quitErr}`);
+		}
 	}
 }
 
@@ -353,9 +366,11 @@ async function main() {
 	});
 
 	while (!shuttingDown) {
+		logger.info("Starting a new Gmail sync cycle");
 		gmailclient = new GmailClient(cfg);
 
 		const auth = await gmailclient.authenticate();
+		logger.info(`Gmail auth result for cycle: tokenPresent=${Boolean(auth?.token)}, requiresReauth=${Boolean(gmailclient.requiresReauth)}`);
 		
 		// the main per-account processing loop
 		if (auth.token) {
@@ -367,6 +382,8 @@ async function main() {
 					logger.error("Error processing account: " + (err.message || err));
 				}
 			}
+		} else {
+			logger.warn("Skipping POP3 import cycle because Gmail authentication is not ready. Complete OAuth in the status page or fix the token file.");
 		}
 
 		if (shuttingDown) break;
