@@ -75,5 +75,5 @@ Main files:
 - `gmail_functions.js` — OAuth flow, Gmail helpers.
 - `stats_store.js` — persistent stats store used by the status page.
 
-Logs are written to `logs/` and rotated. You can change the log directory with the `LOG_DIR` environment variable or `cfg.log_dir` in `config.yaml`.
+Logs are written to `logs/` and rotated. You can change the log directory with the `LOG_DIR` environment variable.
 

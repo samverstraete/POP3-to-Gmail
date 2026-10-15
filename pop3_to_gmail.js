@@ -14,6 +14,7 @@ const url = require("node:url");
 const { parse } = require("yaml");
 const { popConnect, popStat, popRetr, popDele, popQuit } = require("./pop3_functions.js");
 const { setGfLogger, getAuthWaiter, finishAuthWaiter, GmailClient } = require("./gmail_functions.js");
+const { renderRedirectPage, renderStatusPage } = require("./status_page.js");
 // stats store will be created after loading config so we can pass a path from config
 let stats = null;
 const { StatsStore } = require("./stats_store.js");
@@ -86,74 +87,61 @@ function startStatusServer(statsStore, port, secondhop) {
 			// let the waiter handle it (it contains oauth2Client + resolve/reject).
 			const waiter = getAuthWaiter(reqUrl.pathname);
 			if (waiter) {
-				const code = reqUrl.searchParams.get('code');
-				const error = reqUrl.searchParams.get('error');
+				const code = reqUrl.searchParams.get("code");
+				const error = reqUrl.searchParams.get("error");
 				if (error) {
 					res.statusCode = 400;
-					res.end('Authentication failed: ' + error);
-					try { waiter.reject(new Error('OAuth error: ' + error)); } catch(e){}
+					res.end("Authentication failed: " + error);
+					try {
+						waiter.reject(new Error("OAuth error: " + error));
+					} catch (e) {}
 					logger.warn(`OAuth error on callback: ${error}`);
 					return;
 				}
-				res.end(`<!DOCTYPE html><html>
-					<head><meta http-equiv="refresh" content="5; url=/status"></head>
-					<body>Authentication successful! Redirecting to the <a href="/status">status page</a>.</body>
-					</html>`);
+				res.end(renderRedirectPage("Authentication successful!"));
 				finishAuthWaiter(waiter, code);
-				logger.info('OAuth authentication successful via callback');
+				logger.info("OAuth authentication successful via callback");
 				return;
 			}
-			else if (reqUrl.pathname === '/status') {		
+
+			if (reqUrl.pathname === "/status") {
 				const cfg = loadConfig(process.argv[2]);
-                const tokenPath = cfg.gmail.token_file;			
-				if (req.method === 'POST') {
-					let body = '';
-					req.on('data', d => body += d);
-					req.on('end', () => {
+				const tokenPath = cfg.gmail.token_file;
+
+				if (req.method === "POST") {
+					let body = "";
+					req.on("data", (d) => (body += d));
+					req.on("end", () => {
 						try {
 							const postData = JSON.parse(body);
 							if (postData.deleteToken) {
 								unlink(tokenPath, (err) => {
 									if (err) {
 										res.statusCode = 500;
-										res.setHeader('Content-Type', 'application/json');
-										res.end(JSON.stringify({ ok: false, message: 'Error deleting token: ' + (err.message || err) }));
+										res.setHeader("Content-Type", "application/json");
+										res.end(JSON.stringify({ ok: false, message: "Error deleting token: " + (err.message || err) }));
 									} else {
-										res.setHeader('Content-Type', 'application/json');
-										res.end(JSON.stringify({ ok: true, message: 'Token deleted. Restart the application to re-authenticate.' }));
+										res.setHeader("Content-Type", "application/json");
+										res.end(JSON.stringify({ ok: true, message: "Token deleted. Restart the application to re-authenticate." }));
 									}
 								});
 								return;
-							} 
+							}
 							res.statusCode = 400;
-							res.setHeader('Content-Type', 'application/json');
-							res.end(JSON.stringify({ ok: false, message: 'Unknown action' }));
+							res.setHeader("Content-Type", "application/json");
+							res.end(JSON.stringify({ ok: false, message: "Unknown action" }));
 						} catch (e) {
 							res.statusCode = 400;
-							res.setHeader('Content-Type', 'application/json');
-							res.end(JSON.stringify({ ok: false, message: 'Invalid JSON' }));
+							res.setHeader("Content-Type", "application/json");
+							res.end(JSON.stringify({ ok: false, message: "Invalid JSON" }));
 						}
 					});
 					return;
 				}
-				if (statsStore && typeof statsStore.getAllStats === 'function') {
-					const data = statsStore.getAllStats();
-					res.setHeader('Content-Type', 'text/html; charset=utf-8');
-					let html = `<html>
-						<head>
-							<title>POP3->Gmail status</title>
-							<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
-						</head>
-						<body><div class="container">
-							<div id="statusAlert" class="alert alert-warning d-none" role="alert" style="display:none;"></div>
-							<h2>Status</h2>
-							<p>Updated: ${new Date(data.updatedAt || Date.now()).toString()}</p>`;
 
-					// Construct the desired redirect URI. If the host is local (localhost or 127.0.0.1)
-					// use the callback directly so the OAuth flow returns to the running service.
-					// Otherwise build a remote redirect helper and pass the base64-encoded
-					// local callback as the 'data' parameter.
-					const host = req.headers.host;
+				if (statsStore && typeof statsStore.getAllStats === "function") {
+					const data = statsStore.getAllStats();
+					const host = String(req.headers.host || "localhost");
 					const callbackUrl = `http://${host}/oauthcallback`;
 					let redirectUri;
 					let redirectParam;
@@ -163,71 +151,48 @@ function startStatusServer(statsStore, port, secondhop) {
 						redirectParam = "";
 					} else {
 						redirectParam = Buffer.from(`SECONDHOPLINK${callbackUrl}`, "utf8").toString("base64");
-            			redirectUri = secondhop;
+						redirectUri = secondhop;
 					}
-					
+
+					let oauthLink = null;
 					if (gmailclient) {
 						const newurl = gmailclient.getAuthorizeUrl(redirectUri, redirectParam);
-						if (newurl) {
-							html += `<div class="alert alert-primary" role="alert"><strong>Waiting for OAuth authorization:</strong> <a href="${newurl}">Click here</a></div>`;
-						}
+						oauthLink = newurl || null;
 					}
-                    
-					if (existsSync(tokenPath)) {
-						html += `<div id="tokenDelete" class="mb-3">
-							<button class="btn btn-danger" onclick="postAction({deleteToken: true})">Delete Token</button>
-						</div>`;
-					}
-					html += `<h2>Statistics</h2>
-						<table class="table">
-							<tr><th>Account</th><th>Last Sync</th><th>Day</th><th>Week</th><th>Month</th><th>Year</th><th>Total</th></tr>`;
-					const accounts = data.accounts || {};
-					for (const [k,v] of Object.entries(accounts)) {
-						const ls = v.last_sync ? `${new Date(v.last_sync.time).toString()} | <span class="badge bg-info text-dark">${v.last_sync.status}</span>` + (v.last_sync.message?` - ${v.last_sync.message}`:'') : 'n/a';
-						html += `<tr><td>${k}</td><td>${ls}</td><td>${v.counts.day}</td><td>${v.counts.week}</td><td>${v.counts.month}</td><td>${v.counts.year}</td><td>${v.counts.total}</td></tr>`;
-					}
-					html += `</table></div>` + `
-				<script>
-					async function postAction(payload) {
-						try {
-							const resp = await fetch('/status', {
-								method: 'POST',
-								headers: {'Content-Type': 'application/json'},
-								body: JSON.stringify(payload)
-							});
-							const data = await resp.json();
-							const el = document.getElementById('statusAlert');
-							el.textContent = data.message;
-							el.style.display = 'block';
-							el.classList.remove('d-none');
-						} catch (err) {
-							console.log('Request failed: ' + (err.message || err));
-						}
-					}
-				</script>` + `</body></html>`;
-					res.end(html);
-					return;
-				} else {
-					res.statusCode = 500;
-					res.end('Stats store not available');
-					logger.error('Status server: stats store not available');
+
+					res.setHeader("Content-Type", "text/html; charset=utf-8");
+					res.end(
+            renderStatusPage({
+              data,
+              tokenPath,
+              DEFAULT_LOG_DIR,
+              oauthLink,
+            }),
+          );
 					return;
 				}
+
+				res.statusCode = 500;
+				res.end("Stats store not available");
+				logger.error("Status server: stats store not available");
+				return;
 			}
+
 			res.statusCode = 404;
 			res.end(`<!DOCTYPE html><html>
-					<head><meta http-equiv="refresh" content="5; url=/status"></head>
-					<body>Not found! Redirecting to the <a href="/status">status page</a>.</body>
-					</html>`);
+				<head><meta http-equiv="refresh" content="5; url=/status"></head>
+				<body>Not found! Redirecting to the <a href="/status">status page</a>.</body>
+			</html>`);
 			logger.warn(`Status server: unknown request for ${req.url}`);
 		} catch (e) {
 			res.statusCode = 500;
-			res.end('Server error');
+			res.end("Server error");
 			logger.error(`Status server error: ${e.message || e}`);
 		}
 	}).listen(p, () => {
 		logger.info(`Status server listening on http://localhost:${p}/status`);
 	});
+
 	destroyer(httpServer);
 	return httpServer;
 }
@@ -252,7 +217,7 @@ async function processAccount(account, gmailclient) {
 		logger.info(`POP3 connection established for ${account.name}`);
 	} catch (err) {
 		logger.error(`POP3 connect/login failed for ${account.name}: ${err.message || err}`);
-		stats.recordSyncStatus(account.name, 'fail', err.message || String(err));
+		stats.recordSyncStatus(account.name, "fail", err.message || String(err));
 		return;
 	}
 
@@ -287,11 +252,12 @@ async function processAccount(account, gmailclient) {
 				}
 			}
 		}
+
 		logger.info(`Finished processing POP3 account ${account.name}; marking sync as successful`);
-		stats.recordSyncStatus(account.name, 'success', null);
+		stats.recordSyncStatus(account.name, "success", null);
 	} catch (err) {
 		logger.error(`POP3 stat or retrieval failed for ${account.name}: ${err.message || err}`);
-		stats.recordSyncStatus(account.name, 'fail', err.message || String(err));
+		stats.recordSyncStatus(account.name, "fail", err.message || String(err));
 	} finally {
 		try {
 			await popQuit(pop);
@@ -315,10 +281,9 @@ async function main() {
 	stats = new StatsStore(statsFile);
 	logger.info(`Stats file: ${stats.filePath || statsFile || 'default'}`);
 	const intervalMinutes = Math.max(1, Number(cfg.check_interval_minutes || 5));
-	const logDir = cfg.log_dir || DEFAULT_LOG_DIR;
 
 	logger.info("Starting pop3_to_gmail");
-	logger.info(`Log directory: ${logDir}`);
+	logger.info(`Log directory: ${DEFAULT_LOG_DIR}`);
 	logger.info(`Using config: ${cfgPath}`);
 	setGfLogger(logger); // pass logger to gmail_functions.js
 	if (!Array.isArray(cfg.accounts) || cfg.accounts.length === 0) {
