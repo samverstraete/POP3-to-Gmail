@@ -1,5 +1,12 @@
 const { existsSync, readdirSync, readFileSync, statSync } = require("node:fs");
 const path = require("node:path");
+const logger = require("./logger");
+
+function getLogDirectory() {
+	const fileTransport = logger.transports.find((transport) => transport && typeof transport.dirname === "string" && transport.dirname.length > 0);
+	if (fileTransport) return fileTransport.dirname;
+	return logger.DEFAULT_LOG_DIR || process.env.LOG_DIR || globalThis.logDir;
+}
 
 function escapeHtml(value) {
 	return String(value ?? "")
@@ -10,15 +17,26 @@ function escapeHtml(value) {
 		.replace(/'/g, "&#39;");
 }
 
-function readRecentLogLines(logDir, maxLines = 80) {
-	if (!logDir || !existsSync(logDir)) return [];
+function readRecentLogLines(maxLines = 80) {
+	const targetLogDir = getLogDirectory();
+	if (!targetLogDir || !existsSync(targetLogDir)) {
+		logger.debug(`Skipping recent log reads because the Winston log directory is unavailable: ${targetLogDir || "<unset>"}`);
+		return [];
+	}
 
-	let files = readdirSync(logDir, { withFileTypes: true })
-		.filter((entry) => entry.isFile() && /\.log(?:\.[^\\/]+)?$/i.test(entry.name))
+	const fileTransport = logger.transports.find((transport) => transport && typeof transport.filename === "string");
+	const filenamePattern = fileTransport
+		? fileTransport.filename
+			.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+			.replace(/%DATE%/g, ".+")
+		: "\.log";
+
+	let files = readdirSync(targetLogDir, { withFileTypes: true })
+		.filter((entry) => entry.isFile() && new RegExp(`${filenamePattern}(?:\\.gz)?$`, "i").test(entry.name))
 		.map((entry) => ({
 			name: entry.name,
-			path: path.join(logDir, entry.name),
-			mtimeMs: statSync(path.join(logDir, entry.name)).mtimeMs,
+			path: path.join(targetLogDir, entry.name),
+			mtimeMs: statSync(path.join(targetLogDir, entry.name)).mtimeMs,
 		}))
 		.sort((a, b) => b.mtimeMs - a.mtimeMs);
 
@@ -26,6 +44,7 @@ function readRecentLogLines(logDir, maxLines = 80) {
 	for (const file of files) {
 		if (lines.length >= maxLines) break;
 		try {
+			if (/\.gz$/i.test(file.name)) continue;
 			const content = readFileSync(file.path, "utf8");
 			const fileLines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
 			for (const line of fileLines) {
@@ -33,7 +52,7 @@ function readRecentLogLines(logDir, maxLines = 80) {
 				if (lines.length >= maxLines) break;
 			}
 		} catch (err) {
-			// Ignore unreadable files so the status page still renders.
+			logger.warn(`Unable to read Winston log file ${file.path}: ${err.message}`);
 		}
 	}
 	return lines.slice(-maxLines);
@@ -49,13 +68,12 @@ function renderRedirectPage(message = "Authentication successful!") {
 function renderStatusPage({
 	data,
 	tokenPath,
-	logDir,
 	oauthLink,
 	statusMessage = "",
 }) {
 	const updatedAt = new Date(data.updatedAt || Date.now()).toString();
 	const accounts = data.accounts || {};
-	const logLines = readRecentLogLines(logDir, 80);
+	const logLines = readRecentLogLines(80);
 	const hasToken = existsSync(tokenPath);
 	const logHtml = logLines.length
 		? logLines.map((line) => `<div class="log-line">${escapeHtml(line)}</div>`).join("")

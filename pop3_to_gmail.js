@@ -13,44 +13,15 @@ const url = require("node:url");
 
 const { parse } = require("yaml");
 const { popConnect, popStat, popRetr, popDele, popQuit } = require("./pop3_functions.js");
-const { setGfLogger, getAuthWaiter, finishAuthWaiter, GmailClient } = require("./gmail_functions.js");
+const { getAuthWaiter, finishAuthWaiter, GmailClient } = require("./gmail_functions.js");
 const { renderRedirectPage, renderStatusPage } = require("./status_page.js");
 // stats store will be created after loading config so we can pass a path from config
 let stats = null;
 const { StatsStore } = require("./stats_store.js");
+const logger = require("./logger");
 const destroyer = require("server-destroy");
 let httpServer = null;
 let gmailclient = null;
-
-const { createLogger, format, transports } = require("winston");
-const DailyRotateFile = require("winston-daily-rotate-file");
-//const { log } = require("node:console");
-
-const DEFAULT_LOG_DIR = path.normalize(process.env.LOG_DIR || "./logs");
-if (!existsSync(DEFAULT_LOG_DIR))
-	mkdirSync(DEFAULT_LOG_DIR, { recursive: true });
-
-const logger = createLogger({
-	level: "info",
-	format: format.combine(
-		format.timestamp(),
-		format.printf(
-			(info) => `${info.timestamp} ${info.level.toUpperCase()}: ${info.message}`
-		)
-	),
-	transports: [
-		new transports.Console(),
-		new DailyRotateFile({
-			dirname: DEFAULT_LOG_DIR,
-			filename: "pop3_to_gmail-%DATE%.log",
-			datePattern: "YYYY-MM-DD",
-			zippedArchive: true,
-			maxSize: "20m",
-			maxFiles: "14d",
-		}),
-	],
-	exitOnError: false,
-});
 
 // --- Utility & config ---
 
@@ -165,7 +136,6 @@ function startStatusServer(statsStore, port, secondhop) {
             renderStatusPage({
               data,
               tokenPath,
-              DEFAULT_LOG_DIR,
               oauthLink,
             }),
           );
@@ -283,9 +253,8 @@ async function main() {
 	const intervalMinutes = Math.max(1, Number(cfg.check_interval_minutes || 5));
 
 	logger.info("Starting pop3_to_gmail");
-	logger.info(`Log directory: ${DEFAULT_LOG_DIR}`);
+	logger.info(`Log directory: ${logger.DEFAULT_LOG_DIR}`);
 	logger.info(`Using config: ${cfgPath}`);
-	setGfLogger(logger); // pass logger to gmail_functions.js
 	if (!Array.isArray(cfg.accounts) || cfg.accounts.length === 0) {
 		logger.warn("No accounts defined in config. Exiting.");
 		process.exit(2);

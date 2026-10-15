@@ -2,8 +2,8 @@
 const { existsSync, readFileSync, writeFileSync } = require("node:fs");
 const { OAuth2Client } = require("google-auth-library");
 const { gmail } = require("@googleapis/gmail");
+const logger = require("./logger");
 const authWaiters = new Map(); // pathname -> { oauth2Client, resolve, reject }
-let logger = console; // default logger
 let awaitingAuth = false;
 
 class GmailClient {
@@ -280,10 +280,6 @@ class GmailClient {
 
 // ---- Interface helpers ----
 
-function setGfLogger(customLogger) {
-  logger = customLogger;
-}
-
 function getAuthWaiter(pathname) {
   return authWaiters.get(pathname);
 }
@@ -297,7 +293,6 @@ function finishAuthWaiter(waiter, code) {
 }
 
 module.exports = {
-  setGfLogger,
   getAuthWaiter,
   finishAuthWaiter,
   GmailClient,
