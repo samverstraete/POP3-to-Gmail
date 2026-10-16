@@ -48,7 +48,7 @@ function wait(ms) {
 // Start a simple status HTTP server (idempotent). Exposes:
 // - GET /oauthcallback?code=...&state=... -> handles OAuth callbacks if registered
 // - GET /status -> simple HTML table
-function startStatusServer(statsStore, port, secondhop) {
+function startStatusServer(statsStore, port, secondhop, gmailClient) {
     if (httpServer) return httpServer;
     const p = Number(port || process.env.STATUS_PORT || 3000);
     httpServer = http.createServer((req, res) => {
@@ -126,8 +126,8 @@ function startStatusServer(statsStore, port, secondhop) {
                     }
 
                     let oauthLink = null;
-                    if (gmailclient) {
-                        const newurl = gmailclient.getAuthorizeUrl(redirectUri, redirectParam);
+                    if (gmailClient) {
+                        const newurl = gmailClient.getAuthorizeUrl(redirectUri, redirectParam);
                         oauthLink = newurl || null;
                     }
 
@@ -287,7 +287,7 @@ async function main() {
         // fallback
         if (!redirectPort) redirectPort = 3000;
         if (!redirectHelperBase) redirectHelperBase = `http://localhost:${redirectPort}/oauthcallback`;
-        startStatusServer(stats, redirectPort, redirectHelperBase);
+        startStatusServer(stats, redirectPort, redirectHelperBase, gmailclient);
     } catch (e) {
         logger.warn('Failed to start status server: ' + (e.message || e));
     }
