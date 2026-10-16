@@ -15,19 +15,19 @@ const logger = createLogger({
   format: format.combine(
     format.timestamp(),
     format.printf(({ timestamp, level, message, ...meta }) => {
-      const details = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : "";
-      return `${timestamp} ${level.toUpperCase()}: ${message}${details}`;
+        const details = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : "";
+        return `${timestamp} ${level.toUpperCase()}: ${message}${details}`;
     })
   ),
   transports: [
     new transports.Console(),
     new DailyRotateFile({
-      dirname: DEFAULT_LOG_DIR,
-      filename: "pop3_to_gmail-%DATE%.log",
-      datePattern: "YYYY-MM-DD",
-      zippedArchive: true,
-      maxSize: "20m",
-      maxFiles: "14d",
+        dirname: DEFAULT_LOG_DIR,
+        filename: "pop3_to_gmail-%DATE%.log",
+        datePattern: "YYYY-MM-DD",
+        zippedArchive: true,
+        maxSize: "20m",
+        maxFiles: "14d",
     }),
   ],
   exitOnError: false,
