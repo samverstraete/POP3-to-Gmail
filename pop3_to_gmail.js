@@ -262,6 +262,9 @@ async function main() {
         process.exit(2);
     }
 
+    logger.info("Starting a new Gmail client instance");
+    gmailclient = new GmailClient(cfg);
+
     // Start status server on the OAuth redirect port if possible so the
     // status page and the OAuth callback share the same listener.
     try {
@@ -302,9 +305,6 @@ async function main() {
     });
 
     while (!shuttingDown) {
-        logger.info("Starting a new Gmail sync cycle");
-        gmailclient = new GmailClient(cfg);
-
         const auth = await gmailclient.authenticate();
         logger.info(`Gmail auth result for cycle: tokenPresent=${Boolean(auth?.token)}, requiresReauth=${Boolean(gmailclient.requiresReauth)}`);
         
