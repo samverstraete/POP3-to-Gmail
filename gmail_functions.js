@@ -6,12 +6,14 @@ const logger = require("./logger");
 
 class GmailClient {
     gmail;
+    oauth2Client;
     tokenFile;
     requiresReauth;
     authWaiter;
     
     constructor(config) {
         this.requiresReauth = false;
+        this.oauth2Client = null;
         
         // Load credentials
         const credFile = config.gmail.client_secrets_file;
@@ -29,15 +31,16 @@ class GmailClient {
         const redirect_uri = o.redirect_uris && o.redirect_uris[0];
         if (!redirect_uri) throw new Error("No redirect_uri found in credentials");
         
-        // Initialize the OAuth2 client
-        let oauth2Client = new OAuth2Client(client_id, client_secret, redirect_uri);
+        // Initialize the OAuth2 client and keep it on the instance; the Gmail API client
+        // does not expose a public `auth` property even when initialized with one.
+        this.oauth2Client = new OAuth2Client(client_id, client_secret, redirect_uri);
         
         // Listen for token events to save new tokens as they are refreshed or obtained
-        oauth2Client.on("tokens", (tokens) => {
+        this.oauth2Client.on("tokens", (tokens) => {
             logger.info(
                 `OAuth tokens received: refresh_token=${!!tokens.refresh_token}, access_token=${!!tokens.access_token}, expiry_date=${tokens.expiry_date || "n/a"}`,
             );
-            const persisted = oauth2Client.credentials || tokens;
+            const persisted = this.oauth2Client.credentials || tokens;
             const merged = { ...persisted, ...tokens };
             if (merged.refresh_token || persisted.refresh_token) {
                 try {
@@ -52,17 +55,17 @@ class GmailClient {
         // Initialize the Gmail API client with the OAuth2 client as auth
         this.gmail = gmail({
             version: "v1",
-            auth: oauth2Client,
+            auth: this.oauth2Client,
             //proxy: "http://127.0.0.1:8080",
         });
         
         new Promise((resolve, reject) => {
-            this.authWaiter = { resolve, reject };
+            this.authWaiter = { resolve, reject, oauth2Client: this.oauth2Client };
             // the waiter will be removed by the server when it handles the callback
         })
         .then((tokens) => {
             logger.info("OAuth callback completed; applying new Gmail credentials");
-            this.gmail.auth.setCredentials(tokens);
+            this.oauth2Client.setCredentials(tokens);
             this.requiresReauth = false;
         })
         .catch((err) => {
@@ -86,7 +89,7 @@ class GmailClient {
     }
     
     async refreshAccessToken() {
-        if (!this.gmail.auth) return false;
+        if (!this.oauth2Client) return false;
         
         if (!existsSync(this.tokenFile)) {
             logger.warn("No token file available for Gmail refresh; waiting for user OAuth login.");
@@ -109,10 +112,10 @@ class GmailClient {
             return false;
         }
         
-        this.gmail.auth.setCredentials(token);
+        this.oauth2Client.setCredentials(token);
         
         try {
-            const accessToken = await this.gmail.auth.getAccessToken();
+            const accessToken = await this.oauth2Client.getAccessToken();
             logger.info(
                 `Gmail refresh succeeded using the stored refresh token. Access token ready: ${Boolean(accessToken?.token)}`,
             );
@@ -173,9 +176,9 @@ class GmailClient {
             this.requiresReauth = true;
             return { token: null };
         }
-        this.gmail.auth.setCredentials(token);
+        this.oauth2Client.setCredentials(token);
         try {
-            const accessToken = await this.gmail.auth.getAccessToken();
+            const accessToken = await this.oauth2Client.getAccessToken();
             logger.info(`Gmail token refresh/validation succeeded. Access token ready: ${Boolean(accessToken?.token)}`);
             this.requiresReauth = false;
             return { token };
@@ -191,10 +194,10 @@ class GmailClient {
     
     // --- Get the authorization URL for the OAuth2 client ---
     getAuthorizeUrl(redirectUri, secondhop) {
-        if (!this.requiresReauth || !this.gmail.auth) return null;
+        if (!this.requiresReauth || !this.oauth2Client) return null;
         const scopes = ["https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/gmail.labels"];
-        this.gmail.auth.redirectUri = redirectUri;
-        return this.gmail.auth.generateAuthUrl({
+        this.oauth2Client.redirectUri = redirectUri;
+        return this.oauth2Client.generateAuthUrl({
             access_type: "offline",
             scope: scopes,
             prompt: "consent",
@@ -275,8 +278,12 @@ class GmailClient {
     }
 
     finishAuthWaiter(waiter, code) {
+        if (!waiter) return;
+        const authClient = waiter.oauth2Client || this.oauth2Client;
+        if (!authClient) return;
+
         // exchange code for token and resolve the original promise
-        waiter.gmail.auth
+        authClient
         .getToken(code)
         .then(({ tokens }) => waiter.resolve(tokens))
         .catch((err) => waiter.reject(err));

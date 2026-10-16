@@ -56,7 +56,7 @@ function startStatusServer(statsStore, port, secondhop) {
             const reqUrl = new url.URL(req.url, `http://localhost:${p}`);
             // OAuth callback handling: if someone registered a waiter for this pathname,
             // let the waiter handle it (it contains resolve/reject).
-            if (reqUrl.pathname === "oauthcallback") {
+            if (reqUrl.pathname === "/oauthcallback") {
                 const waiter = gmailClient.getAuthWaiter();
                 const code = reqUrl.searchParams.get("code");
                 const error = reqUrl.searchParams.get("error");
