@@ -146,10 +146,24 @@ class GmailClient {
         }
         
         const message = error?.message || error?.response?.data?.error || String(error || "");
+        const lower = message.toLowerCase();
         logger.warn(`${context}: Gmail auth rejected; retrying with the stored refresh token (${message})`);
         
         const refreshed = await this.refreshAccessToken();
         if (refreshed) {
+            // A successful refresh is not enough if Gmail still says the user session is
+            // effectively logged out. In that case we must force re-authentication instead
+            // of continuing the retry loop.
+            if (
+                lower.includes("login required") ||
+                lower.includes("invalid_grant") ||
+                lower.includes("invalid credentials") ||
+                lower.includes("token expired")
+            ) {
+                logger.warn(`${context}: Gmail still rejected the refreshed session; user re-authentication is required.`);
+                this.requiresReauth = true;
+                return true;
+            }
             this.requiresReauth = false;
             return false;
         }

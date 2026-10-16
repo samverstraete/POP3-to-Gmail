@@ -126,10 +126,10 @@ function renderStatusPage({
                 <tbody>${statsRows}</tbody>
             </table>
 
+            <h3>Recent logs</h3>
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <strong>Recent logs</strong>
-                    <span class="badge bg-secondary">${logLines.length} lines</span>
+                    <strong>Recent ${logLines.length} lines</strong>
                 </div>
                 <div class="card-body p-2">
                     <div class="log-panel">${logHtml}</div>
